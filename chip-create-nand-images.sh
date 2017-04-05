@@ -16,18 +16,26 @@ OUTPUTDIR="$3"
 
 # build the UBI image
 prepare_ubi() {
-  local tmpdir=`mktemp -d -t chip-ubi-XXXXXX`
-  local rootfs=$tmpdir/rootfs
-  local ubifs=$tmpdir/rootfs.ubifs
-  local ubicfg=$tmpdir/ubi.cfg
   local outputdir="$1"
-  local rootfstar="$2"
+  local _ROOTFS_TAR="$2"
   local nandtype="$3"
   local maxlebcount="$4"
   local eraseblocksize="$5"
   local pagesize="$6"
   local subpagesize="$7"
   local oobsize="$8"
+  
+  local _TMPDIR=`mktemp -d -t chip-ubi-XXXXXX`
+  local _ROOTFS=$_TMPDIR/rootfs
+  local _EMPTYFS=$_TMPDIR/emptyfs
+  local _ROOTCONFIGFS=$_TMPDIR/rootconffs
+  local _ROOT_UBIFS=$_TMPDIR/root.ubifs
+  local _EMPTY_UBIFS=$_TMPDIR/empty.ubifs
+  local _ROOTCONFIG_UBIFS=$_TMPDIR/root-conf.ubifs
+  local _UBINIZE_CFG=$_TMPDIR/ubinize.cfg
+
+  mkdir -p "${_ROOTFS}" "${_EMPTYFS}" "${_ROOTCONFIGFS}"
+  
   local ebsize=`printf %x $eraseblocksize`
   local psize=`printf %x $pagesize`
   local osize=`printf %x $oobsize`
@@ -50,53 +58,102 @@ prepare_ubi() {
   
   if [ "$osize" = "100" ]; then
     #TOSH_512_SLC
-    volspec="vol_flags=autoresize"
+    echo "ERROR: This is not supported yet because of flash size"
+    exit 1
   elif [ "$osize" = "500" ]; then
     #TOSH_4GB_MLC
-    volspec="vol_size=3584MiB"
+    root_size="500MiB"
+    data_size="2500MiB"
   elif [ "$osize" = "680" ]; then
     #HYNI_8GB_MLC
-    volspec="vol_size=7168MiB"
+    root_size="500MiB"
+    vol_size="6000MiB"
   else
 	echo "Unable to acquire appropriate volume size or flags, quitting!"
 	exit 1
   fi
 
-  mkdir -p $rootfs
-  tar -xf $rootfstar -C $rootfs
-  ${MKFS_UBIFS} -d $rootfs -m $pagesize -e $lebsize -c $maxlebcount -o $ubifs
-  echo "[rootfs]
+# Create root ubifs 
+  tar -xf "${_ROOTFS_TAR}" -C "${_ROOTFS}"
+  ${MKFS_UBIFS} -d "${_ROOTFS}" -m $pagesize -e $lebsize -c $maxlebcount -o "${_ROOT_UBIFS}"
+
+# Create empty ubifs 
+  ${MKFS_UBIFS} -d "${_EMPTYFS}" -m $pagesize -e $lebsize -c $maxlebcount -o "${_EMPTY_UBIFS}"
+
+  touch "${_ROOTCONFIGFS}/primary-rootfs"
+  ${MKFS_UBIFS} -d "${_ROOTCONFIGFS}" -m $pagesize -e $lebsize -c $maxlebcount -o "${_ROOTCONFIG_UBIFS}"
+
+
+  echo "
+[primary-rootfs]
 mode=ubi
 vol_id=0
-$volspec
 vol_type=dynamic
-vol_name=rootfs
+vol_size=$root_size
+vol_name=primary-rootfs
 vol_alignment=1
-image=$ubifs" > $ubicfg
+image=${_ROOT_UBIFS}
+
+[secondary-rootfs]
+mode=ubi
+vol_id=1
+vol_type=dynamic
+vol_size=$root_size
+vol_name=secondary-rootfs
+vol_alignment=1
+image=${_ROOT_UBIFS}
+
+[root-config]
+mode=ubi
+vol_id=2
+vol_type=dynamic
+vol_size=50MiB
+vol_name=root-config
+vol_alignment=1
+image=${_ROOTCONFIG_UBIFS}
+
+[secure-data]
+mode=ubi
+vol_id=3
+vol_type=dynamic
+vol_size=50MiB
+vol_name=secure-data
+vol_alignment=1
+image=${_EMPTY_UBIFS}
+
+[data]
+mode=ubi
+vol_id=4
+vol_type=dynamic
+vol_size=$data_size
+vol_name=data
+vol_alignment=1
+image=${_EMPTY_UBIFS}
+" > ${_UBINIZE_CFG}
 
 
-  ubinize -o $ubi -p $eraseblocksize -m $pagesize -s $subpagesize $mlcopts $ubicfg
+  ubinize -o $ubi -p $eraseblocksize -m $pagesize -s $subpagesize $mlcopts "${_UBINIZE_CFG}"
   img2simg $ubi $sparseubi $eraseblocksize
-  rm -rf $tmpdir
+  rm -rf $_TMPDIR
 }
 
 # build the SPL image
 prepare_spl() {
-  local tmpdir=`mktemp -d -t chip-spl-XXXXXX`
+  local _TMPDIR=`mktemp -d -t chip-spl-XXXXXX`
   local outputdir=$1
   local spl=$2
   local eraseblocksize=$3
   local pagesize=$4
   local oobsize=$5
   local repeat=$((eraseblocksize/pagesize/64))
-  local nandspl=$tmpdir/nand-spl.bin
-  local nandpaddedspl=$tmpdir/nand-padded-spl.bin
+  local nandspl=$_TMPDIR/nand-spl.bin
+  local nandpaddedspl=$_TMPDIR/nand-padded-spl.bin
   local ebsize=`printf %x $eraseblocksize`
   local psize=`printf %x $pagesize`
   local osize=`printf %x $oobsize`
   local nandrepeatedspl=$outputdir/spl-$ebsize-$psize-$osize.bin
-  local padding=$tmpdir/padding
-  local splpadding=$tmpdir/nand-spl-padding
+  local padding=$_TMPDIR/padding
+  local splpadding=$_TMPDIR/nand-spl-padding
 
   ${SNIB} -c 64/1024 -p $pagesize -o $oobsize -u 1024 -e $eraseblocksize -b -s $spl $nandspl
 
@@ -118,7 +175,7 @@ prepare_spl() {
     i=$((i+1))
   done
 
-  rm -rf $tmpdir
+  rm -rf $_TMPDIR
 }
 
 # build the bootloader image
@@ -136,11 +193,11 @@ prepare_uboot() {
 mkdir -p $OUTPUTDIR
 cp $UBOOTDIR/spl/sunxi-spl.bin $OUTPUTDIR/
 cp $UBOOTDIR/u-boot-dtb.bin $OUTPUTDIR/
-cp $ROOTFSTAR $OUTPUTDIR/
+cp $ROOTFSTAR $OUTPUTDIR
 
 ## prepare ubi images ##
 # Toshiba SLC image:
-prepare_ubi $OUTPUTDIR $ROOTFSTAR "slc" 2048 262144 4096 1024 256
+#prepare_ubi $OUTPUTDIR $ROOTFSTAR "slc" 2048 262144 4096 1024 256
 # Toshiba MLC image:
 prepare_ubi $OUTPUTDIR $ROOTFSTAR "mlc" 4096 4194304 16384 16384 1280
 # Hynix MLC image:
