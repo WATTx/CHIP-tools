@@ -29,7 +29,6 @@ prepare_ubi() {
   local _ROOTFS=$_TMPDIR/rootfs
   local _EMPTYFS=$_TMPDIR/emptyfs
   local _ROOTCONFIGFS=$_TMPDIR/rootconffs
-  local _ROOT_UBIFS=$_TMPDIR/root.ubifs
   local _EMPTY_UBIFS=$_TMPDIR/empty.ubifs
   local _ROOTCONFIG_UBIFS=$_TMPDIR/root-conf.ubifs
   local _UBINIZE_CFG=$_TMPDIR/ubinize.cfg
@@ -39,6 +38,7 @@ prepare_ubi() {
   local ebsize=`printf %x $eraseblocksize`
   local psize=`printf %x $pagesize`
   local osize=`printf %x $oobsize`
+  local _ROOT_UBIFS=$outputdir/root-$ebsize-$psize-$osize.ubifs
   local ubi=$outputdir/chip-$ebsize-$psize-$osize.ubi
   local sparseubi=$outputdir/chip-$ebsize-$psize-$osize.ubi.sparse
   local mlcopts=""
