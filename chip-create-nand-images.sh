@@ -27,13 +27,15 @@ prepare_ubi() {
   
   local _TMPDIR=`mktemp -d -t chip-ubi-XXXXXX`
   local _ROOTFS=$_TMPDIR/rootfs
-  local _EMPTYFS=$_TMPDIR/emptyfs
+  local _DATAFS=$_TMPDIR/datafs
+  local _SECUREDATAFS=$_TMPDIR/securedatafs
   local _ROOTCONFIGFS=$_TMPDIR/rootconffs
-  local _EMPTY_UBIFS=$_TMPDIR/empty.ubifs
+  local _DATA_UBIFS=$_TMPDIR/data.ubifs
+  local _SECUREDATA_UBIFS=$_TMPDIR/securedata.ubifs
   local _ROOTCONFIG_UBIFS=$_TMPDIR/root-conf.ubifs
   local _UBINIZE_CFG=$_TMPDIR/ubinize.cfg
 
-  mkdir -p "${_ROOTFS}" "${_EMPTYFS}" "${_ROOTCONFIGFS}"
+  mkdir -p "${_ROOTFS}" "${_DATAFS}" "${_SECUREDATAFS}" "${_ROOTCONFIGFS}"
   
   local ebsize=`printf %x $eraseblocksize`
   local psize=`printf %x $pagesize`
@@ -77,8 +79,15 @@ prepare_ubi() {
   tar -xf "${_ROOTFS_TAR}" -C "${_ROOTFS}"
   ${MKFS_UBIFS} -d "${_ROOTFS}" -m $pagesize -e $lebsize -c $maxlebcount -o "${_ROOT_UBIFS}"
 
-# Create empty ubifs 
-  ${MKFS_UBIFS} -d "${_EMPTYFS}" -m $pagesize -e $lebsize -c $maxlebcount -o "${_EMPTY_UBIFS}"
+# Create data ubifs 
+  echo -e '(Regular) data partition\n\nThe purpose of this partition is to save custom data. The data partition is persistent accross updates of the rootfs.\n The logs, the custom docker containers and the nomad and consul warmstart data is stored here for example.\n' > "${_DATAFS}/README" 
+  mkdir -p ${_DATAFS}/update
+  chmod 777 ${_DATAFS}/update
+  ${MKFS_UBIFS} -d "${_DATAFS}" -m $pagesize -e $lebsize -c $maxlebcount -o "${_DATA_UBIFS}"
+
+# Create secure data ubifs
+  echo -e 'Secure data partition\n\nThe purpose of this partition is to save the important custom data, that should never be affected when the "normal" data partition is cleaned up.\nFor example the wifi credentials are stored here.\nTo protect the data the partition is mounted RO and should only mounted RW if the configuration stored there need to be changed and mounted RO directly after the data changed.\n\n' > "${_SECUREDATAFS}/README" 
+  ${MKFS_UBIFS} -d "${_SECUREDATAFS}" -m $pagesize -e $lebsize -c $maxlebcount -o "${_SECUREDATA_UBIFS}"
 
   touch "${_ROOTCONFIGFS}/primary-rootfs"
   ${MKFS_UBIFS} -d "${_ROOTCONFIGFS}" -m $pagesize -e $lebsize -c $maxlebcount -o "${_ROOTCONFIG_UBIFS}"
@@ -119,7 +128,7 @@ vol_type=dynamic
 vol_size=50MiB
 vol_name=secure-data
 vol_alignment=1
-image=${_EMPTY_UBIFS}
+image=${_SECUREDATA_UBIFS}
 
 [data]
 mode=ubi
@@ -128,7 +137,7 @@ vol_type=dynamic
 vol_size=$data_size
 vol_name=data
 vol_alignment=1
-image=${_EMPTY_UBIFS}
+image=${_DATA_UBIFS}
 " > ${_UBINIZE_CFG}
 
 
