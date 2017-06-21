@@ -60,8 +60,8 @@ prepare_ubi() {
   
   if [ "$osize" = "100" ]; then
     #TOSH_512_SLC
-    echo "ERROR: This is not supported yet because of flash size"
-    exit 1
+    root_size="400MiB"
+    data_size="90MiB"
   elif [ "$osize" = "500" ]; then
     #TOSH_4GB_MLC
     root_size="500MiB"
@@ -92,6 +92,49 @@ prepare_ubi() {
   touch "${_ROOTCONFIGFS}/primary-rootfs"
   ${MKFS_UBIFS} -d "${_ROOTCONFIGFS}" -m $pagesize -e $lebsize -c $maxlebcount -o "${_ROOTCONFIG_UBIFS}"
 
+
+  if [ "$osize" = "100" ]; then
+# This is for the CHIP pro
+  echo "
+[primary-rootfs]
+mode=ubi
+vol_id=0
+vol_type=dynamic
+vol_size=$root_size
+vol_name=primary-rootfs
+vol_alignment=1
+image=${_ROOT_UBIFS}
+
+[root-config]
+mode=ubi
+vol_id=2
+vol_type=dynamic
+vol_size=5MiB
+vol_name=root-config
+vol_alignment=1
+image=${_ROOTCONFIG_UBIFS}
+
+[secure-data]
+mode=ubi
+vol_id=3
+vol_type=dynamic
+vol_size=5MiB
+vol_name=secure-data
+vol_alignment=1
+image=${_SECUREDATA_UBIFS}
+
+[data]
+mode=ubi
+vol_id=4
+vol_type=dynamic
+vol_size=$data_size
+vol_name=data
+vol_alignment=1
+image=${_DATA_UBIFS}
+" > ${_UBINIZE_CFG}
+
+  else
+# This is for the other CHIP variants
 
   echo "
 [primary-rootfs]
@@ -139,7 +182,7 @@ vol_name=data
 vol_alignment=1
 image=${_DATA_UBIFS}
 " > ${_UBINIZE_CFG}
-
+  fi
 
   ubinize -o $ubi -p $eraseblocksize -m $pagesize -s $subpagesize $mlcopts "${_UBINIZE_CFG}"
   img2simg $ubi $sparseubi $eraseblocksize
@@ -206,7 +249,7 @@ cp $ROOTFSTAR $OUTPUTDIR
 
 ## prepare ubi images ##
 # Toshiba SLC image:
-#prepare_ubi $OUTPUTDIR $ROOTFSTAR "slc" 2048 262144 4096 1024 256
+prepare_ubi $OUTPUTDIR $ROOTFSTAR "slc" 2048 262144 4096 1024 256
 # Toshiba MLC image:
 prepare_ubi $OUTPUTDIR $ROOTFSTAR "mlc" 4096 4194304 16384 16384 1280
 # Hynix MLC image:
