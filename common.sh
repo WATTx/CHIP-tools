@@ -184,7 +184,7 @@ flash_images() {
   fi
 
 # We don't want to write the u-boot-env to the u-boot-env partition, to use the u-boot default build environment
-#  echo "saveenv" >> $ubootcmds
+  echo "saveenv" >> $ubootcmds
 
   echo "echo going to fastboot mode" >> $ubootcmds
   echo "fastboot 0" >> $ubootcmds

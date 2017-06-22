@@ -35,7 +35,7 @@ prepare_ubi() {
   local _ROOTCONFIG_UBIFS=$_TMPDIR/root-conf.ubifs
   local _UBINIZE_CFG=$_TMPDIR/ubinize.cfg
 
-  mkdir -p "${_ROOTFS}" "${_DATAFS}" "${_SECUREDATAFS}" "${_ROOTCONFIGFS}"
+  mkdir -p "${_ROOTFS}" "${_DATAFS}" "${_SECUREDATAFS}" "${_ROOTCONFIGFS}" "${_SECUREDATAFS}/overlay-link/etc/wpa_supplicant"
   
   local ebsize=`printf %x $eraseblocksize`
   local psize=`printf %x $pagesize`
@@ -60,8 +60,8 @@ prepare_ubi() {
   
   if [ "$osize" = "100" ]; then
     #TOSH_512_SLC
-    root_size="400MiB"
-    data_size="90MiB"
+    root_size="350MiB"
+    data_size="50MiB"
   elif [ "$osize" = "500" ]; then
     #TOSH_4GB_MLC
     root_size="500MiB"
@@ -87,6 +87,15 @@ prepare_ubi() {
 
 # Create secure data ubifs
   echo -e 'Secure data partition\n\nThe purpose of this partition is to save the important custom data, that should never be affected when the "normal" data partition is cleaned up.\nFor example the wifi credentials are stored here.\nTo protect the data the partition is mounted RO and should only mounted RW if the configuration stored there need to be changed and mounted RO directly after the data changed.\n\n' > "${_SECUREDATAFS}/README" 
+  echo 'network={
+ssid="Snuk-One-Unify"
+psk="cloudychair422"
+proto=RSN
+key_mgmt=WPA-PSK
+pairwise=CCMP
+auth_alg=OPEN
+}
+' > ${_SECUREDATAFS}/overlay-link/etc/wpa_supplicant/wpa_supplicant.conf
   ${MKFS_UBIFS} -d "${_SECUREDATAFS}" -m $pagesize -e $lebsize -c $maxlebcount -o "${_SECUREDATA_UBIFS}"
 
   touch "${_ROOTCONFIGFS}/primary-rootfs"
@@ -96,36 +105,27 @@ prepare_ubi() {
   if [ "$osize" = "100" ]; then
 # This is for the CHIP pro
   echo "
-[primary-rootfs]
+[rootfs]
 mode=ubi
 vol_id=0
 vol_type=dynamic
 vol_size=$root_size
-vol_name=primary-rootfs
+vol_name=rootfs
 vol_alignment=1
 image=${_ROOT_UBIFS}
 
-[root-config]
-mode=ubi
-vol_id=2
-vol_type=dynamic
-vol_size=5MiB
-vol_name=root-config
-vol_alignment=1
-image=${_ROOTCONFIG_UBIFS}
-
 [secure-data]
 mode=ubi
-vol_id=3
+vol_id=1
 vol_type=dynamic
-vol_size=5MiB
+vol_size=20MiB
 vol_name=secure-data
 vol_alignment=1
 image=${_SECUREDATA_UBIFS}
 
 [data]
 mode=ubi
-vol_id=4
+vol_id=2
 vol_type=dynamic
 vol_size=$data_size
 vol_name=data
@@ -251,20 +251,20 @@ cp $ROOTFSTAR $OUTPUTDIR
 # Toshiba SLC image:
 prepare_ubi $OUTPUTDIR $ROOTFSTAR "slc" 2048 262144 4096 1024 256
 # Toshiba MLC image:
-prepare_ubi $OUTPUTDIR $ROOTFSTAR "mlc" 4096 4194304 16384 16384 1280
+#prepare_ubi $OUTPUTDIR $ROOTFSTAR "mlc" 4096 4194304 16384 16384 1280
 # Hynix MLC image:
-prepare_ubi $OUTPUTDIR $ROOTFSTAR "mlc" 4096 4194304 16384 16384 1664
+#prepare_ubi $OUTPUTDIR $ROOTFSTAR "mlc" 4096 4194304 16384 16384 1664
 
 ## prepare spl images ##
 # Toshiba SLC image:
 prepare_spl $OUTPUTDIR $UBOOTDIR/spl/sunxi-spl.bin 262144 4096 256
 # Toshiba MLC image:
-prepare_spl $OUTPUTDIR $UBOOTDIR/spl/sunxi-spl.bin 4194304 16384 1280
+#prepare_spl $OUTPUTDIR $UBOOTDIR/spl/sunxi-spl.bin 4194304 16384 1280
 # Hynix MLC image:
-prepare_spl $OUTPUTDIR $UBOOTDIR/spl/sunxi-spl.bin 4194304 16384 1664
+#prepare_spl $OUTPUTDIR $UBOOTDIR/spl/sunxi-spl.bin 4194304 16384 1664
 
 ## prepare uboot images ##
 # Toshiba SLC image:
 prepare_uboot $OUTPUTDIR $UBOOTDIR/u-boot-dtb.bin 262144
 # Toshiba/Hynix MLC image:
-prepare_uboot $OUTPUTDIR $UBOOTDIR/u-boot-dtb.bin 4194304
+#prepare_uboot $OUTPUTDIR $UBOOTDIR/u-boot-dtb.bin 4194304
